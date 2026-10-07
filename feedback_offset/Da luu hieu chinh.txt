@@ -1,0 +1,8 @@
+mg995>> Da luu hieu chinh vao flash.
+pulseMin=500 us | pulseMax=2500 us | adc0=494 mV | adcMid=3332 mV | adcMax=6186 mV (wiper)
+---
+td8120mg >> Da luu hieu chinh vao flash.
+-> pulseMin=490 us | pulseMax=2520 us | adc0=2533 mV | adcMid=1616 mV | adc180=705 mV
+---
+rds3120mg >> Da luu hieu chinh vao flash.
+ -> pulseMin=510 us | pulseMax=2440 us | adc0=756 mV | adcMid=3220 mV | adcMax=5790 mV (wiper)
