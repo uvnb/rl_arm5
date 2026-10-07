@@ -102,6 +102,10 @@ class ServoModel:
         self._prev_cmd = cmd.copy()
         return cmd
 
+    def step(self, target: np.ndarray) -> np.ndarray:
+        """Alias cho apply(target)."""
+        return self.apply(target)
+
 
 class ServoModelDR:
     """
