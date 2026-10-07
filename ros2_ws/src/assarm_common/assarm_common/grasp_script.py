@@ -165,20 +165,20 @@ class GraspScript:
             self._gripper_target + self.close_speed * self.dt,
             target_close,
         )
-        # Phát hiện bị chặn
+        # Phát hiện bị chặn: kiểm tra khi target tới gần Q_STAR (khối 5 cm)
         error = abs(self._gripper_target - grip_q)
-        if error > self.stall_threshold:
+        if self._gripper_target >= (Q_STAR - 0.05) and error > self.stall_threshold:
             self._stall_count += 1
         else:
             self._stall_count = 0
 
         if self._stall_count >= self.stall_count_needed:
-            # Gripper bị chặn → ghi góc chặn → VERIFY
+            # Gripper bị chặn bởi khối → ghi góc chặn → VERIFY
             self._grip_stall_angle = grip_q
             self.state = GraspState.VERIFY
             self._step_in_state = 0
         elif self._gripper_target >= target_close:
-            # Đóng hết mà không bị chặn → đóng vào không khí
+            # Đóng hết mà không bị chặn → chuyển sang VERIFY kiểm tra
             self._grip_stall_angle = grip_q
             self.state = GraspState.VERIFY
             self._step_in_state = 0
