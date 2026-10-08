@@ -48,6 +48,7 @@ class IKBaselineController:
         gripper_feedback: float,
         cube_pos_perceived: np.ndarray,
         cube_vel_perceived: np.ndarray | None = None,
+        cube_yaw_perceived: float = 0.0,
     ) -> BaselineStepResult:
         """
         Một bước điều khiển Baseline (10 Hz).
@@ -62,6 +63,8 @@ class IKBaselineController:
             Vị trí khối nhận từ perception.
         cube_vel_perceived : ndarray(3), optional
             Vận tốc khối từ perception.
+        cube_yaw_perceived : float, optional
+            Góc yaw của khối từ perception.
 
         Returns
         -------
@@ -118,7 +121,7 @@ class IKBaselineController:
             )
 
         # 5. Pha APPROACH (IK tiếp cận)
-        # Tính delta step theo Jacobian
+        # Tính delta step theo Jacobian cho vị trí
         J = jacobian_numerical(q_feedback)
         desired_dx = pos_err_world * min(1.0, 0.04 / max(dist_err, 1e-4))  # Tốc độ tiếp cận max 4 cm/step
         dq = np.linalg.solve(J.T @ J + 1e-3 * np.eye(4), J.T @ desired_dx)
@@ -126,6 +129,10 @@ class IKBaselineController:
         # Giữ q3 ≈ -q2 để duy trì tilt gần 0
         target_q3 = -q_feedback[1]
         dq[2] += 0.5 * (target_q3 - q_feedback[2])
+
+        # Căn chỉnh Yaw bằng J4: target_q4 = -(cube_yaw_perceived + q1)
+        target_q4 = -(cube_yaw_perceived + q_feedback[0])
+        dq[3] = 0.5 * (target_q4 - q_feedback[3])
 
         # Kẹp max_delta
         dq = np.clip(dq, -MAX_DELTA, MAX_DELTA)

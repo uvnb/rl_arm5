@@ -2,8 +2,8 @@
 
 > **Hệ thống:** cánh tay 4-DOF + gripper song song, 5 servo PWM điều khiển bởi ESP32 qua UART từ Raspberry Pi 4; huấn luyện trong Ignition Gazebo 6.17.1 (Fortress) + ROS 2 Humble, triển khai trên robot thật.
 > **Kiến trúc lai:** **RL chỉ điều khiển 4 khớp tay ở giai đoạn tiếp cận và căn chỉnh.** Đóng gripper, kiểm tra kẹp, nhấc lên, về home và đặt xuống do **script (máy trạng thái)** đảm nhiệm. Mục đích: học nhanh hơn (không học tiếp xúc, không học gripper), an toàn hơn trên robot thật, và kết quả cuối cùng đo được bằng chính script sẽ chạy trên robot.
-> **Phạm vi v5.0:** đã **loại bỏ toàn bộ nội dung UAV/bay** (hover, nhiễu nền, trạng thái nền, cổng khả thi hover, Phase U, an toàn bay). Mục tiêu hiện tại là cánh tay gá cố định gắp **một khối lập phương treo bằng dây con lắc**.
-> **Nguyên tắc:** mọi con số tốc độ và mô hình cảm biến/servo/con lắc là *giả thuyết cho đến khi đo*; chi tiết chưa xác minh được đánh dấu **[CẦN KIỂM CHỨNG]**.
+> **Phạm vi v5.0 (Cập nhật):** Đã loại bỏ toàn bộ nội dung UAV/bay và **quy định mặc định trong tất cả các Phase: vật gắp (khối hộp vuông 5 × 5 × 5 cm) LUÔN LUÔN ĐỨNG YÊN** tại vị trí spawn (không đung đưa con lắc, `swing = 0.0`). Nhiệm vụ tập trung vào điều khiển cánh tay 4-DOF tiếp cận, căn chỉnh vị trí và góc yaw với độ chính xác cao để thực hiện bàn giao cho script gắp.
+> **Nguyên tắc:** mọi con số tốc độ và mô hình cảm biến/servo là *giả thuyết cho đến khi đo*; chi tiết chưa xác minh được đánh dấu **[CẦN KIỂM CHỨNG TRÊN ROBOT THẬT]**.
 
 ---
 
@@ -23,7 +23,7 @@
 
 ### 1.2. Nhiệm vụ và phân vai RL / script
 
-**Vật:** khối lập phương 5 × 5 × 5 cm, 0,1 kg, treo dưới bệ `pedestal_rig` (6 bậc tự do) bằng dây dài 30 cm qua khớp cầu (con lắc). Không còn bàn.
+**Vật gắp:** khối lập phương 5 × 5 × 5 cm, 0,1 kg, đặt tại vị trí spawn ngẫu nhiên trong không gian làm việc phía trước robot (hướng −y), **luôn luôn đứng yên**. Không còn con lắc đung đưa.
 
 ```mermaid
 stateDiagram-v2
@@ -44,14 +44,14 @@ stateDiagram-v2
 
 | Giai đoạn | Bên điều khiển | Nội dung |
 |:---|:---|:---|
-| **APPROACH** | **RL** (4 khớp tay) | Đưa tâm gắp tới đúng vị trí và căn yaw cho khối đang đung đưa; gripper giữ mở |
+| **APPROACH** | **RL** (4 khớp tay) | Đưa tâm gắp tới đúng vị trí và căn yaw cho khối đứng yên tại vị trí spawn; gripper giữ mở |
 | Kích hoạt (`handoff_ok`) | Script | Khi điều kiện bàn giao (3.5) đúng liên tục 3 step thì ngắt RL, chuyển sang script |
 | **CLOSE** | Script | Đóng gripper đến `q*`, dừng khi phát hiện bị chặn (`target − q`) |
 | **VERIFY** | Script | Kiểm tra góc chặn nằm trong cửa sổ hợp lệ (xem dưới); sai thì mở lại và quay về APPROACH (tối đa N lần) |
-| **LIFT / HOME / HOLD** | Script | Nhấc lên, đưa 4 khớp về 0 (home) với gripper giữ nguyên góc kẹp, giữ vài giây |
-| **PLACE / RELEASE** | Script | Hạ xuống vị trí đặt và mở gripper **[CẦN XÁC ĐỊNH: vị trí đặt]** |
+| **HOLD / TÁCH DÂY** | Script | Sau khi VERIFY đạt, dây đứt ra; arm giữ nguyên vị trí kẹp tại chỗ ≥ 3 s (không di chuyển về home để tránh làm rơi/giật khối) |
+| **PLACE / RELEASE** | Script | (Tùy chọn) Hạ xuống vị trí đặt và mở gripper |
 
-**Góc đóng `q*` (đã kiểm tra bằng FK trên URDF).** Với ngón di chuyển như hình bình hành: mỗi má tiến vào `4(1 − cos q)` cm và tụt xuống `4 sin q` cm (FK trên URDF cho đúng các giá trị này, ví dụ q = 0,896 rad → 1,50 cm và 3,12 cm). Gripper mở tối đa 8,0 cm tại q = 0. Để ôm khít khối 5 cm: **`q* = 0,896 rad` (51,3°), má kẹp tụt Δz ≈ 3,12 cm.**
+**Góc đóng `q*` (đã kiểm tra bằng FK trên URDF, [CẦN ĐO TRỰC TIẾP TRÊN GRIPPER THẬT]).** Với ngón di chuyển như hình bình hành: mỗi má tiến vào `4(1 − cos q)` cm và tụt xuống `4 sin q` cm (FK trên URDF cho đúng các giá trị này, ví dụ q = 0,896 rad → 1,50 cm và 3,12 cm). Gripper mở tối đa 8,0 cm tại q = 0. Để ôm khít khối 5 cm: **`q* = 0,896 rad` (51,3°), má kẹp tụt Δz ≈ 3,12 cm.**
 
 | Tình huống | Góc đóng tương ứng |
 |:---|:---|
@@ -66,7 +66,7 @@ stateDiagram-v2
 
 ### 1.3. Baseline (bắt buộc, và là cột mốc sớm)
 
-*Perception (marker) → IK tới `P_close` → cùng script đóng–nhấc–đặt.* Baseline khác RL ở **đúng một chỗ: cách tiếp cận**. Nhờ vậy giá trị của RL được đo sạch: RL chỉ được đưa vào sản phẩm nếu tiếp cận tốt hơn IK trên khối đung đưa. Baseline cũng là hệ thống chạy được ngay (Phase S) trước khi có RL.
+*Perception (marker) → IK tới `P_close` + căn yaw J4 → cùng script đóng–giữ.* Baseline khác RL ở **đúng một chỗ: cách tiếp cận**. Nhờ vậy giá trị của RL được đo sạch: RL cần chứng minh năng lực tiếp cận và căn chỉnh mượt mà, đạt độ chính xác cao trên các cấu hình spawn ngẫu nhiên không gian 3D và góc xoay yaw. Baseline cũng là hệ thống kiểm chứng sớm (Phase S) trước khi có RL.
 
 ### 1.4. Dung sai và tiêu chí chấp nhận
 
@@ -82,18 +82,18 @@ stateDiagram-v2
 | 30° | 6,83 | 0,58 |
 | 45° | 7,07 | 0,46 |
 
-(Cận thận trọng, giả định má phẳng; má khép lại có thể tự xoay khối thẳng hàng nếu ma sát cho phép.) Với yaw dư ≈ 5° dung sai ≈ ±1,3 cm; để bắt ≥ 90% cần σ_tổng ≲ 0,8 cm theo trục đóng. Với perception σ ≈ 0,4 cm và độ rơ servo ≈ 0,35 cm (giả định chưa đo), phần dư cho chuyển động của khối trong lúc đóng cỡ **0,6 cm**.
+(Cận thận trọng, giả định má phẳng; má khép lại có thể tự xoay khối thẳng hàng nếu ma sát cho phép.) Với yaw dư ≈ 5° dung sai ≈ ±1,3 cm; để bắt ≥ 90% cần σ_tổng ≲ 0,8 cm theo trục đóng. Với perception σ ≈ 0,4 cm và độ rơ servo ≈ 0,35 cm (giả định chưa đo), phần dư cho sai số tiếp cận cỡ **0,6 cm**.
 
 **Định nghĩa thành công:**
 - `handoff_ok` (giai đoạn RL): tại thời điểm bàn giao, độ lệch trong khung gripper nằm trong ngưỡng (3.5).
-- **Thành công tổng:** khối còn trong gripper sau LIFT, và tay về home giữ khối ≥ 3 s (rồi đặt xuống nếu có PLACE).
+- **Thành công tổng:** khối kẹp đúng cửa sổ `VERIFY`, dây đứt ra, và tay giữ nguyên vị trí kẹp giữ khối ≥ 3 s (`overall_success`).
 
 | Cấp | Điều kiện | Tiêu chí |
 |:---|:---|:---|
-| **C1a — Sim, tiếp cận** | RL, DR + mô hình cảm biến, khối đung đưa đủ biên độ | `handoff_ok` ≥ 90% (100 episode) **và** tốt hơn baseline IK |
-| **C1b — Sim, tổng** | RL + script | Thành công tổng ≥ 85% |
-| **C2a — Robot thật, khối đứng yên** | Dây cố định hoặc khối giữ yên, ≥ 50 lần | ≥ 47/50 (cận Wilson dưới ≈ 0,84), không thấp hơn baseline |
-| **C2b — Robot thật, khối đung đưa (chấp nhận sản phẩm)** | ≥ 100 lần | **≥ 90% với độ tin cậy 95%**: ≥ 96/100 (cận dưới 0,902) |
+| **C1a — Sim, tiếp cận** | RL, DR + mô hình cảm biến, khối đứng yên toàn dải spawn | `handoff_ok` ≥ 90% (100 episode) **và** tốt hơn baseline IK |
+| **C1b — Sim, tổng** | RL + script gắp-giữ tại chỗ | Thành công tổng ≥ 85% |
+| **C2a — Robot thật, vùng hẹp Level 0–1** | Khối đứng yên cố định, ≥ 50 lần | ≥ 47/50 (cận Wilson dưới ≈ 0,84), không thấp hơn baseline |
+| **C2b — Robot thật, toàn dải spawn (chấp nhận sản phẩm)** | Khối đứng yên toàn dải Level 3, ≥ 100 lần | **≥ 90% với độ tin cậy 95%**: ≥ 96/100 (cận dưới 0,902) |
 
 Để khẳng định ≥ 90% cần 96/100 (0,902) hoặc 50/50 (0,929); 49/50 chỉ cho 0,895.
 
@@ -101,10 +101,10 @@ stateDiagram-v2
 
 | Mục | Nội dung đã xác định & Cập nhật | Tác động / Thiết kế |
 |:---|:---|:---|
-| **Vùng spawn** | Dời về bán kính ngang **r = 0,08 – 0,19 m** → Cần xác nhận lại bằng IK với `d_off` thật ở Phase 0 | Giới hạn vùng bệ treo khối |
-| **Con lắc sim** | `damping = 0,1` (ζ ≈ 0,97) làm khối không đung đưa (sai nghiêm trọng) → **Đổi về `0,003` ngay lập tức**, đo đạc phần cứng sau để hiệu chỉnh chuẩn | Mô hình physics con lắc sim |
-| **Dây & Arm sau kẹp** | Sau khi kẹp thành công (`VERIFY` pass), **dây lập tức đứt ra**. Arm **giữ nguyên vị trí tại chỗ** (không quay về home) | Script đơn giản hóa: `CLOSE` → `VERIFY` → `HOLD` |
-| **Feedback 50 Hz & Nguồn** | 50 Hz feedback là **tần số ADC của ESP32 ngoài**. Không cần lo lắng về điện áp servo và dòng kẹp | Firmware ESP32 đọc ADC ngoài ở 50 Hz |
+| **Vật gắp** | **Khối lập phương 5 × 5 × 5 cm luôn luôn đứng yên (`swing = 0.0`)** | Không còn dao động con lắc trong toàn bộ các phase |
+| **Vùng spawn** | Bán kính ngang **r = 0,08 – 0,19 m**, hướng mặt trước **−y** | Robot hoạt động ngay vùng trung tâm J1, không kẹt biên |
+| **Dây & Arm sau kẹp** | Sau khi kẹp thành công (`VERIFY` pass), **dây lập tức đứt ra**. Arm **giữ nguyên vị trí tại chỗ** (không quay về home) | Script đơn giản hóa: `CLOSE` → `VERIFY` → `HOLD` (≥ 3 s) |
+| **Feedback 50 Hz & Nguồn** | 50 Hz feedback là **tần số ADC của ESP32 ngoài**. Cần kiểm tra độ tuyến tính ADC ESP32 ở dải > 3.0V | Firmware ESP32 đọc ADC ngoài ở 50 Hz |
 | **Vị trí Camera** | Đặt **cố định trên base**, hướng về phía trước arm, **bắt trọn khung hình chứa cube** | Mô hình perception & vị trí camera |
 
 ---
@@ -156,32 +156,37 @@ stateDiagram-v2
 
 Nghĩa là bệ ở bán kính 0,28–0,30 m (gốc bệ `Y = 0,30 m`) quá xa; gripper sẽ nghiêng 30–40° hoặc không tới. **Có thể do định nghĩa khác (gốc tọa độ, `d_off`, điểm đo bán kính).** Dưới đây là kiểm tra độc lập của tôi từ khung khớp URDF; không có mesh nên chưa chính xác tuyệt đối. Cần kiểm lại bằng IK với `d_off` thật (Phase 0).
 
-**Vùng spawn đề xuất** (đã kiểm tra: ≥ 95% điểm có cấu hình nghiêng < 15° nếu `d_off ≤ 2 cm`; còn 70–86% nếu `d_off = 4 cm`, khi đó giới hạn r ≤ 0,17 m):
+**Vùng spawn chuẩn hóa (Khối lập phương luôn luôn đứng yên):**
 
-| Cấp | Bán kính ngang r (m) | Góc quét J1 θ | Độ cao khối z (m) | Yaw | Biên độ đung đưa |
+| Cấp | Bán kính ngang r (m) | Góc quét J1 θ | Độ cao khối z (m) | Yaw khối | Trạng thái vật |
 |:---|:---|:---|:---|:---|:---|
-| Level 0 | 0,10 – 0,14 | ±15° | 0,22 – 0,25 | ±15° | 0 (khối đứng yên) |
-| Level 1 | 0,09 – 0,16 | ±20° | 0,21 – 0,26 | ±20° | ≤ 0,5 cm |
-| Level 2 | 0,08 – 0,18 | ±35° | 0,20 – 0,27 | ±25° | ≤ 1,5 cm |
-| Level 3+ | 0,08 – 0,19 | ±60° | 0,20 – 0,27 | ±45° | ≤ 2,5 cm |
+| Level 0 | 0,10 – 0,14 | ±15° | 0,19 – 0,25 | ±15° | Đứng yên (`swing = 0.0`) |
+| Level 1 | 0,09 – 0,16 | ±20° | 0,19 – 0,25 | ±20° | Đứng yên (`swing = 0.0`) |
+| Level 2 | 0,08 – 0,18 | ±35° | 0,18 – 0,26 | ±25° | Đứng yên (`swing = 0.0`, mở rộng góc quét) |
+| Level 3 | 0,08 – 0,19 | ±60° | 0,18 – 0,26 | ±45° | Đứng yên (`swing = 0.0`, không gian cực đại) |
 
-Yaw khối quy về `Δψ ∈ [−45°, +45°]` so với trục đóng ngón nhờ đối xứng 90°. Bệ `pedestal_rig` đặt khối theo cấp (bệ treo ở độ cao sao cho khối ở đúng độ cao z và dây thẳng đứng).
+Yaw khối quy về `Δψ ∈ [−45°, +45°]` so với trục đóng ngón nhờ đối xứng 90° của khối hộp vuông.
 
-### 3.2. Con lắc: tham số sim hiện tại sai lệch rõ
+### 3.2. Không gian làm việc, Định hướng Trục Tọa độ và Phân tích Baseline IK
 
-Với khối 0,1 kg, dây 30 cm (xem khối như khối lượng điểm cách khớp 0,30 m):
+**1. Định hướng trục tọa độ mặt trước của robot (Hệ Base):**
+* Trong hệ tọa độ gốc URDF/CAD của ASSARM: tại tư thế danh định $q_1 = 0$, cánh tay robot vươn thẳng về **hướng −y** (thay vì +x).
+* Tọa độ của khối đặt phía trước mặt robot chuẩn xác:
+  $$x_{\text{cube}} = -r \sin(\theta), \quad y_{\text{cube}} = -r \cos(\theta), \quad z_{\text{cube}} \in [0.18, 0.26]\text{ m}$$
+* Khi đó góc quay khớp J1 là $q_1 \approx \theta$, nằm an toàn ngay trung tâm dải vận hành $[-\pi/2, +\pi/2]$, loại bỏ hoàn toàn hiện tượng kẹt cứng khớp ở biên $-90^\circ$.
 
-| Đại lượng | Giá trị |
-|:---|:---|
-| Tần số riêng | ω₀ = √(g/L) ≈ 5,72 rad/s → **0,91 Hz** (chu kỳ 1,10 s) |
-| Giảm chấn khớp cầu 0,1 N·m·s/rad | **ζ ≈ 0,97**: gần tới hạn, **gần như không dao động** |
-| Giảm chấn thật điển hình ζ ≈ 0,01–0,05 | b ≈ 0,001–0,005 N·m·s/rad (≈ 30 lần nhỏ hơn 0,1) |
-| Ma sát Coulomb khớp cầu 0,02 N·m | khối "kẹt" khi lệch góc < 0,068 rad ≈ 3,9°, tức **lệch ngang tới ±2,0 cm** quanh phương thẳng đứng |
-| Ma sát 0,0005 N·m | vùng kẹt ≈ ±0,5 mm |
+**2. Giải mã và khắc phục Baseline IK (từ 23% lên ≥ 85%):**
+* *Nguyên nhân kết quả 23% ban đầu:*
+  1. Tọa độ spawn trước đây đặt ở nửa mặt phẳng $+x$ khiến $J_1$ bị ép kịch trần ở $-90^\circ$ đối với mọi mẫu có $y > 0$.
+  2. Ma trận Jacobian $J$ chỉ giải 3D vị trí $[x, y, z]$, bỏ mặc khớp xoay cổ tay J4 ở mức $0.0$, khiến điều kiện sai số góc $|\Delta \psi| \le 10^\circ$ bị rớt ngẫu nhiên trên 60% số mẫu.
+* *Biện pháp chuẩn hóa:*
+  - Cập nhật đúng tọa độ mặt trước hướng $-y$.
+  - Bổ sung điều khiển giải tích cho J4: tại tư thế kẹp thẳng đứng ($q_3 \approx -q_2$), góc yaw gripper thỏa $\text{yaw} = -(q_1 + q_4)$. Do đó đặt mục tiêu $q_4 = -(\text{yaw}_{\text{khối}} + q_1)$ giúp triệt tiêu hoàn toàn sai số góc $\Delta \psi \to 0$.
+  - Sau khi chuẩn hóa, bộ điều khiển Baseline IK đạt **85.0% tỉ lệ bàn giao** trên khối đứng yên.
 
-Hệ quả: với `damping = 0,1` và `friction = 0,02` hiện tại, khối **không đung đưa chân thực** mà đứng yên tại một vị trí ngẫu nhiên lệch tới 2 cm (tức bằng dung sai đóng ngón). Tham số này nên **hiệu chỉnh từ đo thật**: thả khối từ độ lệch ~3 cm, đo chu kỳ (suy ra chiều dài hiệu dụng) và độ suy giảm biên độ (suy ra giảm chấn); khởi đầu thử `damping ≈ 0,003`, `friction ≈ 0,0005`. DR: chiều dài ±10%, giảm chấn lấy theo log-đều quanh số đo, ma sát quanh số đo.
-
-**Khởi tạo đung đưa mỗi episode:** với ζ ≈ 0,03, thời gian suy giảm cỡ 6 giây mô phỏng nên không chờ lắng giữa các episode. Đặt biên độ và pha khởi đầu ngẫu nhiên theo cấp (3.1), bằng cách `set_pose` khối/dây hoặc "kick" ngắn của bệ **[CẦN KIỂM CHỨNG cách nào ổn định trong Fortress]**. Biên độ đung đưa 1 cm tương ứng vận tốc đỉnh ≈ 5,7 cm/s; điều kiện bàn giao đòi vận tốc tương đối thấp (3.5), nên RL phải học căn thời điểm.
+**3. Phân tích Dung sai Cơ học và Ngưỡng Bàn giao:**
+* Miệng kẹp gripper mở rộng tối đa $8.0\text{ cm}$, khối hộp vuông có kích thước $5.0\text{ cm}$. Khe hở dung sai vật lý mỗi bên là $(8.0 - 5.0) / 2 = 1.5\text{ cm}$ ($15\text{ mm}$).
+* Ngưỡng bàn giao trong mô phỏng ($e_x \le 6\text{ mm}, e_y \le 10\text{ mm}, e_z \le 6\text{ mm}$, nghiêng $\le 15^\circ$, $|\Delta \psi| \le 10^\circ$) là ngưỡng kiểm soát chặt để đảm bảo tâm kẹp ôm khít trọng tâm khối mà không chạm đẩy khối đi.
 
 ### 3.3. Observation (28D, phẳng, triển khai được, chuẩn hóa thủ công)
 
@@ -192,14 +197,14 @@ Hệ quả: với `damping = 0,1` và `friction = 0,02` hiện tại, khối **k
 | 9–12 | `target − q` (4 khớp) | 4 | env tự giữ | `/ ε`, clip ±1 |
 | 13–15 | Vị trí `P_close` | 3 | FK từ `q` + offset `[0,0,−0,0312]` | `/ 0.3 m` |
 | 16–18 | Vị trí khối trong hệ base | 3 | Camera + marker | `/ 0.3 m` |
-| 19–21 | **Vận tốc khối (đã lọc)** | 3 | Bộ lọc trên chuỗi perception (alpha-beta hoặc Kalman với mô hình con lắc), dùng chung sim/thật | `/ 0.1 m/s`, clip ±1 |
+| 19–21 | **Vận tốc khối (đã lọc)** | 3 | Bộ lọc trên chuỗi perception (alpha-beta hoặc Kalman), dùng chung sim/thật (danh định ≈ 0 khi khối đứng yên) | `/ 0.1 m/s`, clip ±1 |
 | 22–24 | `e = R_gripperᵀ (khối − P_close)` (x: trục đóng, y: dọc ngón, z: trục gripper) | 3 | tính toán | `/ 0.1 m` |
 | 25–26 | `sin(4Δψ)`, `cos(4Δψ)` | 2 | Yaw khối (marker) trừ yaw trục đóng ngón (FK đầy đủ) | không cần |
 | 27 | Độ nghiêng gripper so với phương thẳng đứng | 1 | FK | `/ 0.5 rad` |
 | 28 | `pose_valid` | 1 | Cờ perception | nhị phân |
 
 - Gripper không có trong obs vì RL không điều khiển và gripper luôn mở trong APPROACH.
-- **Vận tốc khối lọc** quay lại obs vì con lắc là khó khăn chính; vận tốc sai phân thô quá nhiễu (σ vị trí 4 mm ở 10 Hz cho nhiễu vận tốc cỡ 5,7 cm/s, bằng chính vận tốc con lắc), nên phải lọc.
+- **Vận tốc khối lọc:** danh định bằng 0 do khối luôn đứng yên (`swing = 0.0`); bộ lọc giúp triệt tiêu nhiễu đo lường perception để tránh gây rung lắc giả tạo cho policy.
 - **Yaw tương đối:** `Δψ = wrap_to_±45°(yaw_khối − yaw_hàm_kẹp)`, `yaw_hàm_kẹp` là hướng ngang của trục x của `Plate_1`, tính bằng **FK đầy đủ** (không dùng `FK(q[0], q[3])`: công thức xấp xỉ `ψ₀ − q₁ − q₄` đúng khi nghiêng < 20° nhưng có đuôi sai lớn khi nghiêng 20–25° và ở một số tư thế gập). Do khối đối xứng 90°, chọn nhầm trục x/y chỉ lệch hằng số 90°, nhưng sai số lệch ngang phải đo theo x.
 - **Hàm dựng obs dùng chung:** `build_obs(...) → np.ndarray(28)` đặt trong `assarm_common`, nhập bởi env và triển khai.
 
@@ -234,23 +239,23 @@ def reward(self):
     d = norm(self.obj_true - self.P_close)
     dpsi = wrap_to_pm45(self.yaw_obj_true - self.yaw_jaw)
     w_near = clip(1.0 - d / 0.08, 0.0, 1.0)
-    r = -d + W_NEAR * (1.0 - tanh(d / 0.03)) \
-        - 0.3 * w_near * abs(dpsi) / (pi / 4) \
-        - 0.2 * max(0.0, self.tilt_deg - 15.0) / 15.0 \
-        - 0.1 * w_near * min(self.rel_speed / 0.05, 1.0) \
+    # Reward thuần âm để tối ưu hóa thời gian và tránh bẫy loop
+    r = -10.0 * d - 0.02 \
+        - 1.0 * w_near * abs(dpsi) / (pi / 4) \
+        - 0.5 * max(0.0, self.tilt_deg - 15.0) / 15.0 \
         - 0.5 * float(self.jaw_cube_contact) \
         - 0.01 * sum(self.last_action**2) \
         - self.w_rate * sum((self.last_action - self.prev_action)**2)
     return r
 ```
 
-- `W_NEAR` khởi đầu 0,3 (A/B ở Phase 1: chỉ `−d` so với `−d` + số hạng gần). Giữ `−d` vì hàm có chặn phẳng dần ở xa nên gradient dẫn hướng biến mất.
+- Thiết kế reward **thuần âm ($\le 0$)** với hình phạt bước $-0.02$ và phạt khoảng cách lớn ($-10 \cdot d$), loại bỏ mọi bẫy "đứng chơi thu thưởng lơ lửng" (`hovering reward trap`).
 - Phạt `jaw_cube_contact` (contact thật trong sim, chỉ dùng cho reward): ngón mở chạm khối trước khi bàn giao là xấu (đẩy khối đi).
-- `w_rate` khởi đầu 0,01, tăng dần (tới 0,03–0,05) khi policy ổn định, để hạn chế lắc giật; phạt quá mạnh làm tay chậm bám khối đung đưa.
-- **Kết thúc:** khi script kích hoạt bàn giao (từ đại lượng đã lọc, như trên robot thật) thì `terminated = True` và thưởng cuối **dựa trên chất lượng bàn giao thật** (pose thật): `+10` nếu mọi ngưỡng thật đều thỏa, `−2` nếu không (nhận biết bàn giao nhầm do nhiễu). `truncated = True` khi hết giờ (60 step ở Stage A, 80 step ở Stage B) hoặc khi khối bị đẩy ra xa vùng hợp lệ (`info["cube_lost"]=True`).
-- Vì có kết thúc khi thành công và thưởng cuối dương lớn hơn tổng phạt còn lại, agent không có động cơ né bàn giao.
+- `w_rate` khởi đầu 0,01, tăng dần khi policy ổn định để triệt tiêu dao động giật cục của servo.
+- **Kết thúc:** khi script kích hoạt bàn giao (từ đại lượng đã lọc, như trên robot thật) thì `terminated = True` và thưởng cuối **dựa trên chất lượng bàn giao thật** (pose thật): `+30` nếu mọi ngưỡng thật đều thỏa, `−5` nếu bàn giao nhầm. `truncated = True` khi hết giờ (60 step ở Stage A, 80 step ở Stage B) hoặc khi khối bị đẩy xê dịch quá xa (`info["cube_lost"]=True`).
+- Thưởng cuối lớn ($+30$) áp đảo tổng phạt tích lũy, thúc đẩy agent tiếp cận nhanh và chính xác nhất.
 
-**Chỉ số đánh giá (sim, pose thật):** `handoff_rate`; `time_to_handoff`; `handoff_error` (e_x, e_y, e_z, Δψ lúc bàn giao); `false_handoff_rate` (script kích hoạt nhưng pose thật không thỏa); **`overall_success`** (chạy script đầy đủ sau bàn giao); `mean_abs_action`; `jaw_cube_contact_rate`. Báo cáo theo cấp spawn và theo biên độ đung đưa, kèm Wilson 95%.
+**Chỉ số đánh giá (sim, pose thật):** `handoff_rate`; `time_to_handoff`; `handoff_error` (e_x, e_y, e_z, Δψ lúc bàn giao); `false_handoff_rate` (script kích hoạt nhưng pose thật không thỏa); **`overall_success`** (chạy script đầy đủ sau bàn giao); `mean_abs_action`; `jaw_cube_contact_rate`. Báo cáo theo cấp spawn, kèm Wilson 95%.
 
 ### 3.6. Script: chi tiết điều khiển (dùng chung sim/thật)
 
@@ -289,8 +294,8 @@ def reward(self):
 | `effort` từng khớp | ±20% |
 | Tham số `ServoModel`, `position_proportional_gain` | ±30% quanh số đo |
 | Trễ lệnh và trễ perception (có jitter) | theo phân phối đo thật |
-| Con lắc: chiều dài / giảm chấn / ma sát | ±10% / log-đều quanh số đo / quanh số đo |
-| Biên độ và pha đung đưa ban đầu | theo cấp 3.1 |
+| Con lắc: chiều dài / giảm chấn / ma sát | Đã loại bỏ (khối luôn đứng yên) |
+| Vận tốc đung đưa ban đầu | 0.0 m/s (khối luôn đứng yên `swing = 0.0`) |
 | Vị trí/yaw/độ cao khối | spawn curriculum 3.1 |
 
 ---
@@ -329,15 +334,15 @@ def step(self, action):
 - `t_nominal` tăng đúng số substep đã yêu cầu; stamp đo chỉ để kiểm tra lệch; đặt lại khi khởi động lại Gazebo.
 - Dung sai chờ `1/rate` mặc định; chỉ siết xuống `0,5/rate` sau khi xác nhận thẳng hàng.
 - Không dùng "đợi ack controller": khi sim pause controller không chạy `update()`.
-- Bệ `pedestal_rig` chỉ chuyển động ở **reset** (đặt khối theo cấp, tạo đung đưa ban đầu), không chuyển động mỗi step.
-- Sau khi script nhận bàn giao, env chạy đoạn script (CLOSE→HOME…) với cùng cơ chế lệnh con để đo `overall_success`.
+- Bệ `pedestal_rig` chỉ chuyển động ở **reset** (đặt khối đứng yên theo cấp), không chuyển động mỗi step.
+- Sau khi script nhận bàn giao, env chạy đoạn script (CLOSE→HOLD…) với cùng cơ chế lệnh con để đo `overall_success`.
 
 ### 4.3. Reset
 
-1. Áp DR và chọn cấp spawn; đặt bệ theo cấp.
+1. Áp DR và chọn cấp spawn; đặt vị trí khối theo cấp (`swing = 0.0`).
 2. Về home (4 khớp = 0, gripper **mở**), `multi_step` tới khi `|qdot| < 0,01` (tối đa 20 vòng; vượt thì log và khởi động lại Gazebo).
 3. `target = q_đo`, `cmd_prev = target`.
-4. Tạo đung đưa ban đầu (3.2); khởi tạo bộ lọc và mô hình cảm biến.
+4. Khởi tạo bộ lọc và mô hình cảm biến (vận tốc khối = 0).
 5. Đọc obs đầu.
 
 ### 4.4. Pose khối và contact (sim)
@@ -443,7 +448,8 @@ Con số step/s sớm nhất: ≈ 80 Hz joint states giờ thật cho ≈ 8 env 
 | Mốc | Điều kiện | Hành động |
 |:---|:---|:---|
 | Stage A, 5×10⁴ step | `handoff_rate` < 30% | Rà reward, ngưỡng bàn giao, vùng spawn khả thi (3.1) |
-| Stage B, nhiễu + đung đưa ≈ 50% mục tiêu, sau 1,5×10⁵ step | `handoff_rate` < 30% | Giảm nhiễu tạm; rà bộ lọc vận tốc, ngưỡng tốc độ tương đối |
+| Stage A, 5×10⁴ step | `handoff_rate` < 30% | Rà reward, ngưỡng bàn giao, vùng spawn khả thi (3.1) |
+| Stage B, sau 1,5×10⁵ step | `handoff_rate` < 30% | Giảm nhiễu tạm; rà bộ lọc perception, ngưỡng bàn giao |
 | Mọi stage | `false_handoff_rate` > 10% | Siết ngưỡng hoặc cải thiện bộ lọc perception |
 | 10k step đầu | `mean_abs_action` ≈ 0 | "Đứng hình": rà phạt action |
 
@@ -457,54 +463,47 @@ Con số step/s sớm nhất: ≈ 80 Hz joint states giờ thật cho ≈ 8 env 
 ### 7.3. Các phase
 
 **Phase 0 — Hạ tầng sim (tuần 1–3)**
-- [ ] venv, pin `gymnasium==0.29.1 stable-baselines3==2.8.0 tensorboard` (không cần `sb3-contrib`), `pip check`
-- [ ] Cấu hình ros2_control (4.8): yaml 100 Hz; một `rig_controller` cho bệ; giữ hai manager với namespace; sửa `effort` (3.7); collision primitive; kiểm `ros2 topic info /joint_states -v` một publisher
-- [ ] World: bệ + dây + khối (`damping`, `friction` theo 3.2), contact system, nguồn pose
-- [ ] Đo chiều dài ngón, `d_off`, `q_open`, `q_closed`; tính lại vùng spawn bằng **IK với `d_off` thật** (3.1); unit test: với mỗi cấp, lấy 1000 điểm, giải IK, kiểm tỉ lệ nghiêng < 15°
-- [ ] Test FK so với Gazebo (< 2 mm); yaw gripper bằng FK đầy đủ
-- [ ] Bridge `ControlWorld`; kiểm `SetEntityPose`/`Contacts`
-- [ ] Đo tần số/stamp theo giờ mô phỏng; `real_time_factor`; thẳng hàng tick
-- [ ] Lag test lệnh → hiệu lực; **A/B giao diện lệnh** (4.6); hiệu chỉnh `position_proportional_gain`
-- [ ] Cách tạo đung đưa ban đầu ổn định (`set_pose` hoặc kick bệ) và cơ chế tách dây (3.6)
-- [ ] Benchmark tách thành phần; đo reset; step/s tổng ở GUI+mesh, headless+mesh, headless+primitive; đo 1 và 2 instance
-- [ ] `check_env`; kiểm `ServoModel`/DR/bộ lọc không làm vỡ `build_obs`
-- **Cổng:** quy tắc 7.2; sim ổn định, hai manager, mọi controller activate
+- [x] venv, pin `gymnasium==0.29.1 stable-baselines3==2.8.0 tensorboard`, `pip check` (Đã hoàn thành)
+- [x] Cấu hình ros2_control: yaml 100 Hz; JGPC controller cho 4 khớp tay và gripper; sửa `effort` theo servo thật (Đã hoàn thành)
+- [x] Định dạng tọa độ robot: mặt trước là hướng **−y**, góc $J_1 \approx \theta$, không kẹt biên (Đã hoàn thành)
+- [ ] Collision primitive: thay thế mesh phức tạp bằng cylinder/box cho các link cánh tay để tăng tốc độ mô phỏng
+- [ ] Đo đạc benchmark định lượng: `env_step/s` trên máy train (mục tiêu ≥ 3, quy tắc 7.2)
+- [ ] Kiểm chứng tính nhất quán giữa FK và Gazebo (< 2 mm); kiểm tra cầu nối dịch vụ `ControlWorld` và `Contacts`
+- **Cổng:** quy tắc 7.2 (`env_step/s` ≥ 3); sim ổn định, mọi controller activate
 
 **Phase R — Kiểm kê robot thật (song song, tuần 1–5)**
-- [ ] Đáp ứng bước từng khớp (nhảy 0,2 rad, ≥ 100 Hz trong 2 s, ×10, có/không tải); vùng chết, độ rơ (đặc biệt J4)
-- [ ] Độ trễ đầu-cuối Pi → ESP32 → servo → feedback, ghi phân phối (trung bình, p95, p99, jitter); tần số lệnh tối đa
-- [ ] Hiệu chuẩn feedback, chọn EMA; làm rõ "50 Hz", loại ADC; nguồn và dòng khi kẹp
-- [ ] Firmware ESP32: nội suy, giới hạn, watchdog, phát hiện kẹt
-- [ ] **Gripper thật:** góc ôm khít khối 5 cm (so với `q* = 0,896`), hành vi bị chặn (`target − q`), lực kẹp (cân), ma sát (kéo trượt); thử má kẹp vát/đệm mềm
-- [ ] **Con lắc thật:** thả khối từ độ lệch ~3 cm; đo chu kỳ và suy giảm biên độ → `damping`, `friction`, chiều dài hiệu dụng (3.2)
-- [ ] Camera: chọn vị trí (phân tích che khuất), hiệu chuẩn, đo nhiễu vị trí/yaw, độ trễ, mất dấu
-- [ ] Lớp an toàn (mục 8), kiểm thử khô
-- **Cổng:** có số đo cho 3.2, 3.7, `max_delta`, `EPS_GRIP`, `q*`
+- [x] **Hiệu chuẩn ADC & Servo Feedback (Đã nạp):** ánh xạ ADC → góc, dải xung PWM từ thực nghiệm, slope từng khớp (Đã nạp vào `config.py` và `servo_model.py`)
+- [ ] **[CẦN KIỂM CHỨNG TRÊN ROBOT THẬT]:**
+  - Đo đáp ứng bước thực tế từng khớp (bước nhảy 0,2 rad); xác định vùng chết (deadband 0,5–1°), độ rơ cơ khí (backlash 1–2°, đặc biệt khớp J4)
+  - Phân phối độ trễ đầu-cuối Pi → UART → ESP32 → Servo → Feedback (trung bình, p95, jitter)
+  - Đo trực tiếp góc ôm khít khối 5 cm trên gripper thật bằng thước kẹp (so sánh với lý thuyết $q^* = 0,896\text{ rad}$)
+  - Kiểm tra độ tuyến tính ADC của ESP32 ở vùng điện áp cao > 3,0 V và biên an toàn khi sụt áp nguồn servo
+- **Cổng:** có số đo phần cứng thực tế xác minh cho 3.2, 3.7, `max_delta`, `EPS_GRIP`, `q*`
 
 **Phase S — Script gắp và baseline (tuần 3–6)**
-- [ ] Máy trạng thái trong `assarm_common` (3.6); chạy trong sim: CLOSE → VERIFY → LIFT → HOME → HOLD với khối **đứng yên** đặt đúng `P_close` (không RL, không IK)
-- [ ] **Đây là test mimic dưới tải**: hai má giữ khối, các khớp theo sau giữ hệ số ±1, khối không tuột; kiểm `effort`
-- [ ] Baseline *IK tiếp cận + script* trong sim với khối đứng yên rồi đung đưa; đo tỉ lệ
-- [ ] Chạy script trên robot thật với khối đứng yên đặt tay; tinh chỉnh `q*`, cửa sổ VERIFY, tốc độ, `EPS_GRIP`
-- **Cổng:** script-only ≥ 90% với khối đứng yên đặt đúng vị trí (sim) và ≥ 8/10 trên robot thật. Nếu không, **không bắt đầu RL**: lỗi nằm ở gripper/script chứ không phải ở tiếp cận
+- [x] Chuẩn hóa Baseline IK: giải tích yaw J4 và tọa độ mặt trước −y giúp baseline đạt **85.0%** trên sim với khối đứng yên (Đã hoàn thành trong sim)
+- [x] Máy trạng thái trong `assarm_common` (APPROACH → CLOSE → VERIFY → HOLD); test mimic dưới tải trong sim (Đã hoàn thành)
+- [ ] Kiểm tra âm (Negative tests) cho `VERIFY`: đóng hụt vào không khí ($q > 1,0\text{ rad}$), kẹp chéo góc ($q \approx 0,49\text{ rad}$), kẹp lệch yaw lớn
+- [ ] **[CẦN KIỂM CHỨNG TRÊN ROBOT THẬT]:** Chạy script trên robot thật với khối đứng yên đặt bằng tay; tinh chỉnh $q^*$, cửa sổ `VERIFY`
+- **Cổng:** Script-only ≥ 90% với khối đứng yên (sim) và **≥ 8/10 trên robot thật**. (Nếu robot thật không đạt thì chưa vào Phase 5)
 
 **Phase 1 — RL Stage A: tiếp cận và căn yaw, khối đứng yên (tuần 5–6)**
-- [ ] Hoàn thiện env (obs 28D, action 4D, bộ lọc vận tốc, bàn giao, thưởng cuối); Level 0–1; **khối spawn đứng yên (biên độ đung đưa = 0)**; A/B `W_NEAR`
+- [ ] Hoàn thiện env (obs 28D, action 4D, bộ lọc perception, bàn giao, reward thuần âm); Level 0–1; **khối luôn đứng yên (`swing = 0.0`)**
 - **Cổng:** `handoff_rate` ≥ 90%, `false_handoff_rate` < 5% (100 episode, deterministic, DR bật, Level 0–1)
 
-**Phase 2 — RL Stage B: toàn vùng spawn, khối đung đưa nhẹ, DR và nhiễu (tuần 7–9)**
-- [ ] Warm-start từ Stage A; mở dần Level 2–3; **khối đung đưa nhẹ (biên độ < 1 cm)**; curriculum nhiễu
+**Phase 2 — RL Stage B: toàn vùng spawn, khối đứng yên, DR và nhiễu (tuần 7–9)**
+- [ ] Warm-start từ Stage A; mở dần Level 2–3 (bán kính $r \in [0,08; 0,19]\text{ m}$, góc quét rộng $\pm 60^\circ$); **khối luôn đứng yên (`swing = 0.0`)**; curriculum nhiễu DR
 - **Cổng C1a:** `handoff_rate` ≥ 90% ở Level 3 **và tốt hơn baseline IK**; báo cáo `overall_success` (C1b ≥ 85%)
 
 **Phase 3 — (tùy chọn) Stage C: thưởng theo kết quả script (tuần 9–10)**
-- [ ] Sau bàn giao, chạy script đầy đủ; thưởng cuối dựa trên khối còn trong gripper sau LIFT/HOME; có thể chạy trên một phần episode để tiết kiệm thời gian
+- [ ] Sau bàn giao, chạy script đầy đủ; thưởng cuối dựa trên kết quả kẹp giữ tại chỗ (HOLD ≥ 3 s)
 - **Cổng:** `overall_success` tăng so với Stage B mà không giảm `handoff_rate`
 
-**Phase 4 — Đánh giá sim (tuần 10–11):** 200 episode × số seed, cùng bộ seed, deterministic; mean ± std + Wilson; so với baseline IK trên cùng khối đung đưa; kiểm tra độ bền DR (tham số ngoài khoảng huấn luyện) và độ nhạy với biên độ đung đưa.
+**Phase 4 — Đánh giá sim (tuần 10–11):** 200 episode × số seed, deterministic; so sánh đối đầu với baseline IK trên cùng tập spawn khối đứng yên toàn dải; kiểm tra độ bền DR.
 
 **Phase 5 — Chuyển sang robot thật (tuần 11–14)**
-- [ ] **5a — Khối đứng yên:** node 10 Hz trên Pi 4 dùng đúng `build_obs` và script; actor xuất NumPy/ONNX; khô (không khối, tốc độ giảm, nút dừng khẩn); so quỹ đạo thật/sim; **C2a:** 50 lần
-- [ ] **5b — Khối đung đưa:** vòng hiệu chỉnh 3.2/3.7 từ chênh lệch sim–thật; **C2b:** ≥ 100 lần, ≥ 96 thành công, so với baseline cùng điều kiện
+- [ ] **5a — Khối đứng yên vùng hẹp (Level 0–1):** node 10 Hz trên Pi 4 dùng đúng `build_obs` và script; actor xuất NumPy/ONNX; kiểm thử khô; **C2a:** ≥ 47/50 lần
+- [ ] **5b — Toàn dải không gian spawn Level 3:** **C2b:** ≥ 100 lần, ≥ 96 thành công (độ tin cậy 95%), so với baseline cùng điều kiện
 - **Cổng sản phẩm:** đạt C2b; nếu RL không vượt baseline thì giữ baseline (hoặc hybrid IK + RL tinh chỉnh)
 
 > **Lịch:** khoảng 14 tuần đến C2b. Deadline và nhân lực chưa biết nên chưa kiểm được tính khả thi.
@@ -520,10 +519,10 @@ Checkpoint model **và replay buffer** mỗi 10k step; watchdog khởi động l
 | Cơ chế | Tầng | Mô tả |
 |:---|:---|:---|
 | Giới hạn khớp và tốc độ | Pi + ESP32 | Kẹp target trong dải hẹp hơn dải servo; giới hạn bước/chu kỳ |
-| Hộp không gian làm việc | Pi | Tâm kẹp không ra ngoài vùng; **tránh bệ và dây**: chặn vùng quanh bệ |
+| Hộp không gian làm việc | Pi | Tâm kẹp không ra ngoài vùng; tránh va chạm bệ |
 | Giới hạn siết gripper | ESP32 | `EPS_GRIP`; ngắt lệnh khi kẹt kéo dài |
 | Hủy bỏ script | Pi | Quá thời gian từng trạng thái, mất perception quá lâu, góc gripper bất thường → dừng, giữ vị trí |
-| Cửa sổ VERIFY | Pi | Sai cửa sổ → mở lại, không nhấc |
+| Cửa sổ VERIFY | Pi | Sai cửa sổ → mở lại, không nhấc/giữ |
 | Watchdog / heartbeat | ESP32 | Mất lệnh > 300 ms → giữ vị trí |
 | Nguồn | Phần cứng | Giới hạn dòng, tụ, nguồn servo riêng |
 | Dừng khẩn | Phần cứng | Nút dừng cứng, cắt nguồn servo |
@@ -537,19 +536,17 @@ Lớp an toàn kiểm thử độc lập với policy (bơm lệnh xấu giả l
 
 | Hạng mục | Mô tả | Giảm thiểu |
 |:---|:---|:---|
-| **Vùng spawn không với tới / nghiêng quá lớn** | Spawn gốc (r 0,28–0,30 m) cần nghiêng ≥ 21–41° hoặc không tới | Spawn đề xuất 3.1 + IK với `d_off` thật (Phase 0) |
-| **Con lắc sim sai** | `damping` 0,1 (ζ≈0,97) và `friction` 0,02 (kẹt ±2 cm) làm khối không đung đưa chân thực | Hiệu chỉnh từ đo thật; thử 0,003 / 0,0005 |
-| **Dây sau khi kẹp** | Dây 30 cm căng khi về home | Tách dây trong sim; xác định cơ chế thật (1.5) |
-| Căn yaw | Dung sai ±1,5 cm → ±0,46 cm khi lệch 45° | Yaw tương đối trong obs, reward yaw, spawn yaw curriculum, độ chính xác J4 |
-| Che khuất | Gripper che marker ở đoạn cuối | Bộ lọc dự đoán con lắc, `pose_valid`, camera chọn bằng phân tích hình học |
-| Vận tốc khối nhiễu | Sai phân thô ≈ vận tốc con lắc | Bộ lọc alpha-beta/Kalman dùng chung sim/thật |
-| Sim-to-real | Servo, tiếp xúc, ma sát, trễ | `ServoModel`, DR, Phase R/5 |
-| Mimic dưới tải | Chưa được kiểm | Phase S |
-| Lực kẹp/mô-men | Sim ban đầu mạnh hơn servo | Sửa `effort`; đo lực kẹp |
-| Dòng kẹt/nguồn | Sập nguồn khi kẹp | `EPS_GRIP`, nguồn riêng, đo dòng |
-| Hướng gripper | Nghiêng phụ thuộc vị trí (4-DOF) | Spawn trong vùng nghiêng < 15° |
-| Ngưỡng 90% | Cao với servo sở thích | C2a trung gian; baseline; hybrid |
-| Chưa xác minh | step/s, API bridge, tần số nguồn, jitter Pi, cách tạo đung đưa, cơ chế tách dây | Phase 0/R |
+| **Vùng spawn không với tới / kẹt biên J1** | Khối đặt lệch hệ quy chiếu (+x) làm J1 kẹp biên −90° | Đã sửa: Mặt trước là hướng −y, r = 0,08–0,19 m, J1 tự do |
+| **Dung sai kẹp và sai số J4** | Dung sai ±1,5 cm; servo J4 có độ rơ cơ học | Bổ sung giải tích yaw J4, căn chỉnh trước khi kẹp |
+| **Dây sau khi kẹp** | Dây níu kéo gây lật hoặc rơi | Đứt dây ngay khi kẹp xong (`VERIFY` pass), giữ nguyên vị trí |
+| Căn yaw | Dung sai hẹp khi lệch góc | Yaw tương đối trong obs, reward yaw, đối xứng 90° |
+| Che khuất camera | Gripper che marker ở pha cuối tiếp cận | Camera đặt trước arm bao quát toàn cảnh, bộ lọc perception |
+| Độ trễ và phi tuyến servo | Trễ UART + độ trễ vật lý servo làm lệch đáp ứng | `ServoModel`, DR độ trễ, Phase R đo đạc thật |
+| Mimic dưới tải | Khớp mimic tuột khi có tải | Phase S kiểm tra tải thật trên robot |
+| Lực kẹp/mô-men | Sim ban đầu mạnh hơn servo thật | Giảm `effort` trong URDF, kiểm soát dòng qua ESP32 |
+| Dòng kẹt/nguồn | Sập nguồn khi kẹp tải | Nguồn riêng, tụ đệm, ngắt PWM khi giữ lâu |
+| Ngưỡng 90% | Cao với servo hobby | Giữ baseline làm phương án dự phòng và so sánh |
+| Chưa xác minh trên phần cứng | Trễ đầu-cuối, deadband J4, đo $q^*$ thật, test 8/10 | Phase R / Phase S trên robot thật |
 
 ---
 

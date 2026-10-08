@@ -83,22 +83,20 @@ class FastSimEngine:
             z_min, z_max
         )
 
-        # Tọa độ khối trong hệ base
-        self.cube_base_pos = np.array([r * np.cos(theta), r * np.sin(theta), z])
+        # Tọa độ khối trong hệ base: mặt trước của robot tay ở hướng -Y
+        self.cube_base_pos = np.array([-r * np.sin(theta), -r * np.cos(theta), z])
         self.cube_yaw = np.random.uniform(-params["yaw"], params["yaw"])
 
-        # Đung đưa
-        self.swing_amp = params["swing"]
-        self.swing_phase = np.random.uniform(0, 2 * np.pi)
+        # Khối luôn luôn đứng yên
+        self.swing_amp = 0.0
+        self.swing_phase = 0.0
 
         self.sim_time = 0.0
         self._update_cube_pose()
 
-        # Góc khớp khởi tạo của robot hướng về phía khối
-        y_j1 = -0.010797
-        x_j1 = -0.000006
-        q1_init = np.arctan2(self.cube_base_pos[1] - y_j1, self.cube_base_pos[0] - x_j1)
-        self.q_meas = np.array([q1_init, 0.2, -0.2, 0.0])
+        # Góc khớp khởi tạo của robot hướng về phía khối (ở hướng -Y, q1_init = theta)
+        q1_init = theta
+        self.q_meas = np.array([q1_init, 0.4, -0.4, 0.0])
         self.q_target = self.q_meas.copy()
         self.servo_model.reset(self.q_meas)
         self.gripper_meas = 0.0

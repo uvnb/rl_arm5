@@ -110,7 +110,7 @@ DR_PENDULUM_DAMPING_RANGE = (0.001, 0.01)  # log-uniform quanh số đo
 # ===========================================================================
 # Spawn levels (bán kính ngang m, góc quét J1 rad, độ cao khối m,
 #               yaw rad, biên độ đung đưa m)
-# Cập nhật v5.0: Phase 1 (Level 0-1) đứng yên (swing=0.0), Phase 2 (Level 2-3) đung đưa nhẹ (<1cm)
+# Cập nhật: Khối hộp vuông luôn luôn đứng yên (swing = 0.0) ở tất cả các phase/level
 # ===========================================================================
 SPAWN_LEVELS = {
     0: dict(r=(0.10, 0.14), theta=np.radians(15), z=(0.19, 0.25),
@@ -118,9 +118,9 @@ SPAWN_LEVELS = {
     1: dict(r=(0.09, 0.16), theta=np.radians(20), z=(0.19, 0.25),
             yaw=np.radians(20), swing=0.0),
     2: dict(r=(0.08, 0.18), theta=np.radians(35), z=(0.18, 0.26),
-            yaw=np.radians(25), swing=0.005),
+            yaw=np.radians(25), swing=0.0),
     3: dict(r=(0.08, 0.19), theta=np.radians(60), z=(0.18, 0.26),
-            yaw=np.radians(45), swing=0.008),
+            yaw=np.radians(45), swing=0.0),
 }
 
 # ===========================================================================
