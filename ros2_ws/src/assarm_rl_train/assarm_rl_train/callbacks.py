@@ -75,11 +75,26 @@ class HandoffEvalCallback(BaseCallback):
             self.logger.record("eval/handoff_rate", handoff_rate)
             self.logger.record("eval/mean_reward", mean_reward)
 
+            # Luôn lưu checkpoint mới nhất cùng replay buffer
+            latest_model_path = os.path.join(self.save_path, "latest_model.zip")
+            latest_buffer_path = os.path.join(self.save_path, "latest_replay_buffer.pkl")
+            self.model.save(latest_model_path)
+            try:
+                self.model.save_replay_buffer(latest_buffer_path)
+            except Exception as e:
+                if self.verbose > 0:
+                    print(f"--> Warning: Could not save replay buffer: {e}")
+
             if handoff_rate > self.best_handoff_rate:
                 self.best_handoff_rate = handoff_rate
                 best_model_path = os.path.join(self.save_path, "best_model.zip")
+                best_buffer_path = os.path.join(self.save_path, "best_replay_buffer.pkl")
                 self.model.save(best_model_path)
+                try:
+                    self.model.save_replay_buffer(best_buffer_path)
+                except Exception:
+                    pass
                 if self.verbose > 0:
-                    print(f"--> Saved new best model to {best_model_path} (handoff_rate = {handoff_rate:.1f}%)")
+                    print(f"--> Saved new best model & buffer to {best_model_path} (handoff_rate = {handoff_rate:.1f}%)")
 
         return True
