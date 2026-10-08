@@ -74,6 +74,7 @@ def main():
             train_freq=1,
             gradient_steps=4,
             ent_coef="auto",
+            target_entropy=-2.0,
             tensorboard_log=args.tb_log,
             verbose=1,
         )

@@ -16,6 +16,7 @@ sac:
   train_freq: 1
   gradient_steps: 4
   ent_coef: "auto"
+  target_entropy: -2.0
 
 eval:
   eval_freq: 5000

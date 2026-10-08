@@ -113,7 +113,11 @@ class AssarmGraspEnv(gym.Env):
         action = np.clip(action, -1.0, 1.0)
 
         # 1. Update target: clip delta và clip giới hạn khớp
-        delta_q = action * MAX_DELTA
+        # Dynamic Action Scaling: thu nhỏ bước lệnh khi d < 5 cm để tăng độ phân giải vi mô (tới 20%)
+        p_prev = p_close(self.sim.q_meas)
+        d_prev = float(np.linalg.norm(self.sim.cube_pos - p_prev))
+        scale = float(np.clip(d_prev / 0.05, 0.2, 1.0))
+        delta_q = action * MAX_DELTA * scale
         self.target_q = np.clip(self.target_q + delta_q, Q_LO_ARM, Q_HI_ARM)
         # Khóa an toàn: target không được lệch quá EPS_ARM so với q_meas
         self.target_q = np.clip(self.target_q, self.sim.q_meas - EPS_ARM, self.sim.q_meas + EPS_ARM)
@@ -158,6 +162,7 @@ class AssarmGraspEnv(gym.Env):
         reward = step_reward
         terminated = False
         truncated = False
+        good_handoff = False
 
         # 6. Terminal & Handoff condition
         if handoff_ok:
@@ -175,9 +180,11 @@ class AssarmGraspEnv(gym.Env):
         elif self.step_count >= self.max_steps:
             truncated = True
 
-        # Ghi nhận thông số bước
+        # Ghi nhận thông số bước (bao gồm is_success cho SB3 Monitor wrapper)
         info = {
             "handoff_ok": handoff_ok,
+            "good_handoff": good_handoff,
+            "is_success": bool(handoff_ok and good_handoff),
             "distance": d,
             "tilt_deg": tilt_deg,
             "dpsi_deg": np.degrees(dpsi),

@@ -47,32 +47,48 @@ class HandoffEvalCallback(BaseCallback):
 
     def _on_step(self) -> bool:
         if self.n_calls % self.eval_freq == 0:
-            handoff_count = 0
-            total_rewards = []
-
+            # 1. Đánh giá Deterministic
+            handoff_count_det = 0
+            total_rewards_det = []
             for _ in range(self.n_eval_episodes):
                 obs, _ = self.eval_env.reset()
                 done = False
                 ep_reward = 0.0
-
                 while not done:
                     action, _ = self.model.predict(obs, deterministic=True)
                     obs, reward, terminated, truncated, info = self.eval_env.step(action)
                     ep_reward += reward
                     done = terminated or truncated
-
                     if info.get("handoff_ok", False):
-                        handoff_count += 1
+                        handoff_count_det += 1
+                total_rewards_det.append(ep_reward)
 
-                total_rewards.append(ep_reward)
+            # 2. Đánh giá Stochastic
+            handoff_count_stoch = 0
+            for _ in range(self.n_eval_episodes):
+                obs, _ = self.eval_env.reset()
+                done = False
+                while not done:
+                    action, _ = self.model.predict(obs, deterministic=False)
+                    obs, reward, terminated, truncated, info = self.eval_env.step(action)
+                    done = terminated or truncated
+                    if info.get("handoff_ok", False):
+                        handoff_count_stoch += 1
 
-            handoff_rate = (handoff_count / self.n_eval_episodes) * 100.0
-            mean_reward = float(np.mean(total_rewards))
+            handoff_rate_det = (handoff_count_det / self.n_eval_episodes) * 100.0
+            handoff_rate_stoch = (handoff_count_stoch / self.n_eval_episodes) * 100.0
+            mean_reward = float(np.mean(total_rewards_det))
 
             if self.verbose > 0:
-                print(f"\n[Eval @ Step {self.num_timesteps}] Handoff Rate: {handoff_rate:.1f}% ({handoff_count}/{self.n_eval_episodes}), Mean Reward: {mean_reward:.2f}")
+                print(
+                    f"\n[Eval @ Step {self.num_timesteps}] "
+                    f"Handoff Rate Det: {handoff_rate_det:.1f}% ({handoff_count_det}/{self.n_eval_episodes}) | "
+                    f"Stoch: {handoff_rate_stoch:.1f}% ({handoff_count_stoch}/{self.n_eval_episodes}) | "
+                    f"Mean Rew: {mean_reward:.2f}"
+                )
 
-            self.logger.record("eval/handoff_rate", handoff_rate)
+            self.logger.record("eval/handoff_rate", handoff_rate_det)
+            self.logger.record("eval/handoff_rate_stoch", handoff_rate_stoch)
             self.logger.record("eval/mean_reward", mean_reward)
 
             # Luôn lưu checkpoint mới nhất cùng replay buffer
@@ -85,8 +101,8 @@ class HandoffEvalCallback(BaseCallback):
                 if self.verbose > 0:
                     print(f"--> Warning: Could not save replay buffer: {e}")
 
-            if handoff_rate > self.best_handoff_rate:
-                self.best_handoff_rate = handoff_rate
+            if handoff_rate_det > self.best_handoff_rate:
+                self.best_handoff_rate = handoff_rate_det
                 best_model_path = os.path.join(self.save_path, "best_model.zip")
                 best_buffer_path = os.path.join(self.save_path, "best_replay_buffer.pkl")
                 self.model.save(best_model_path)
@@ -95,6 +111,6 @@ class HandoffEvalCallback(BaseCallback):
                 except Exception:
                     pass
                 if self.verbose > 0:
-                    print(f"--> Saved new best model & buffer to {best_model_path} (handoff_rate = {handoff_rate:.1f}%)")
+                    print(f"--> Saved new best model & buffer to {best_model_path} (handoff_rate_det = {handoff_rate_det:.1f}%)")
 
         return True

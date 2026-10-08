@@ -16,7 +16,7 @@ from assarm_common.grasp_script import GraspScript, GraspState
 from assarm_rl_env.assarm_env import AssarmGraspEnv
 
 
-def evaluate_policy(model_path: str, n_episodes: int = 100, level: int = 0):
+def evaluate_policy(model_path: str, n_episodes: int = 100, level: int = 0, deterministic: bool = True):
     """
     Đánh giá mô hình SAC gắp khối.
 
@@ -28,9 +28,12 @@ def evaluate_policy(model_path: str, n_episodes: int = 100, level: int = 0):
         Số episode đánh giá (mặc định 100).
     level : int
         Level spawn khối (0..3).
+    deterministic : bool
+        True cho mean policy, False cho stochastic policy.
     """
+    mode_str = "Deterministic" if deterministic else "Stochastic"
     print("=" * 70)
-    print(f" ĐÁNH GIÁ MÔ HÌNH SAC ({model_path}) — Level {level}, {n_episodes} Episodes")
+    print(f" ĐÁNH GIÁ MÔ HÌNH SAC ({model_path}) — Level {level}, {n_episodes} Episodes [{mode_str}]")
     print("=" * 70)
 
     env = AssarmGraspEnv(spawn_level=level)
@@ -40,6 +43,7 @@ def evaluate_policy(model_path: str, n_episodes: int = 100, level: int = 0):
     grasp_success_count = 0
     false_handoff_count = 0
     ep_rewards = []
+    end_distances = []
 
     for ep in range(n_episodes):
         obs, info = env.reset(seed=42 + ep)
@@ -61,7 +65,7 @@ def evaluate_policy(model_path: str, n_episodes: int = 100, level: int = 0):
                     break
             else:
                 # RL điều khiển tiếp cận
-                action, _ = model.predict(obs, deterministic=True)
+                action, _ = model.predict(obs, deterministic=deterministic)
                 obs, reward, terminated, truncated, info = env.step(action)
                 ep_reward += reward
 
@@ -73,9 +77,11 @@ def evaluate_policy(model_path: str, n_episodes: int = 100, level: int = 0):
                 if terminated or truncated:
                     break
 
+        end_distances.append(info.get("distance", 0.0))
+
         if handoff_trig:
             handoff_count += 1
-            if not info.get("handoff_ok", True):
+            if not info.get("good_handoff", True):
                 false_handoff_count += 1
 
         if script.state in (GraspState.HOLD, GraspState.DONE, GraspState.RELEASE) or (handoff_trig and not script.is_terminal):
@@ -86,13 +92,15 @@ def evaluate_policy(model_path: str, n_episodes: int = 100, level: int = 0):
     handoff_rate = (handoff_count / n_episodes) * 100.0
     overall_success = (grasp_success_count / n_episodes) * 100.0
     false_handoff_rate = (false_handoff_count / max(handoff_count, 1)) * 100.0
+    mean_dist_mm = float(np.mean(end_distances) * 1000.0)
 
     print("\n" + "=" * 70)
-    print(" KẾT QUẢ ĐÁNH GIÁ MÔ HÌNH SAC")
+    print(f" KẾT QUẢ ĐÁNH GIÁ MÔ HÌNH SAC [{mode_str}]")
     print("=" * 70)
     print(f"  Handoff Rate (Tỉ lệ bàn giao): {handoff_rate:.1f}% ({handoff_count}/{n_episodes})")
     print(f"  Overall Success (Gắp thành công): {overall_success:.1f}% ({grasp_success_count}/{n_episodes})")
     print(f"  False Handoff Rate (Bàn giao nhầm): {false_handoff_rate:.1f}% ({false_handoff_count}/{max(handoff_count, 1)})")
+    print(f"  Mean End Distance: {mean_dist_mm:.1f} mm")
     print(f"  Mean Episode Reward: {np.mean(ep_rewards):.2f} ± {np.std(ep_rewards):.2f}")
     print("=" * 70)
 
@@ -104,9 +112,10 @@ def main():
     parser.add_argument("--model", type=str, required=True, help="Đường dẫn file mô hình .zip")
     parser.add_argument("--episodes", type=int, default=100, help="Số episode đánh giá")
     parser.add_argument("--level", type=int, default=0, help="Level spawn (0..3)")
+    parser.add_argument("--stochastic", action="store_true", help="Chạy đánh giá ở chế độ stochastic")
     args = parser.parse_args()
 
-    evaluate_policy(args.model, n_episodes=args.episodes, level=args.level)
+    evaluate_policy(args.model, n_episodes=args.episodes, level=args.level, deterministic=not args.stochastic)
 
 
 if __name__ == "__main__":

@@ -19,47 +19,40 @@ def compute_reward(
     jaw_contact: bool,           # ngón mở chạm khối
     action: np.ndarray,          # (4,) action hiện tại
     prev_action: np.ndarray,     # (4,) action trước
-    W_NEAR: float = 0.5,         # Mẫu B2: Điều chỉnh về 0.5 để tránh farm điểm step
+    W_NEAR: float = 0.3,
     W_YAW: float = 0.3,
     W_TILT: float = 0.2,
     W_SPEED: float = 0.1,
     W_CONTACT: float = 0.5,
     W_ACTION: float = 0.005,
     w_rate: float = 0.005,
+    time_penalty: float = 0.02,  # Phạt thời gian để thúc đẩy kết thúc sớm
 ) -> float:
     """
-    Tính reward dense cho Mẫu B2 (Anti-Reward Hacking & Strong Handoff Incentive).
+    Tính reward dense thuần âm (<= 0) mỗi step để triệt tiêu hoàn toàn động cơ né bàn giao.
 
     Cấu trúc:
-    - `-d`: thưởng khoảng cách (dense, linear, giảm dần xa)
-    - `W_NEAR * (1 - tanh(d/0.03))`: bonus khi gần target
-    - `0.3 * exp(-d / 0.015)`: bonus vừa đủ khi d < 3 cm
-    - Phạt yaw, tilt, tốc độ: chỉ tính khi gần (w_near > 0)
-    - Phạt contact: ngón mở chạm khối (đẩy khối) rất xấu
-    - Phạt action magnitude + rate: tối ưu vi mô ở cự sát
+    - -(d + 0.3 * tanh(d/0.03)): khoảng cách (luôn <= 0, tiệm cận 0 khi d -> 0)
+    - -0.02: phạt thời gian mỗi step (luôn <= 0)
+    - Phạt yaw, tilt, tốc độ, contact, action regularization (luôn <= 0)
 
     Returns
     -------
     float
-        Reward (thường trong [-0.5, +0.8] mỗi step).
+        Step reward <= 0 (thường trong [-0.5, -0.02]).
     """
     # Hệ số "gần": tăng từ 0 → 1 khi d giảm từ 0.08 → 0
     w_near = np.clip(1.0 - d / 0.08, 0.0, 1.0)
 
-    # Mẫu B2: Bonus dạng mũ kiểm soát vừa phải (0.3 thay vì 1.5)
-    near_exponential_bonus = 0.3 * np.exp(-d / 0.015) if d < 0.03 else 0.0
-
     r = (
-        # Distance term — gradient dẫn hướng
-        -d
-        # Near-target shaping — bonus vừa đủ khi gần
-        + W_NEAR * (1.0 - np.tanh(d / 0.03))
-        # Mẫu B2 near exponential bonus
-        + near_exponential_bonus
+        # Distance shaping — thuần âm, tiệm cận 0 khi d -> 0
+        - (d + W_NEAR * np.tanh(d / 0.03))
+        # Phạt thời gian mỗi step — thúc đẩy hoàn thành càng sớm càng tốt
+        - time_penalty
         # Yaw penalty — chỉ phạt khi gần (yaw xa không quan trọng)
-        - W_YAW * w_near * abs(dpsi) / (np.pi / 4)
+        - W_YAW * w_near * (abs(dpsi) / (np.pi / 4))
         # Tilt penalty — phạt nghiêng quá 15°
-        - W_TILT * max(0.0, tilt_deg - 15.0) / 15.0
+        - W_TILT * (max(0.0, tilt_deg - 15.0) / 15.0)
         # Speed penalty — phạt tốc độ tương đối khi gần
         - W_SPEED * w_near * min(rel_speed / 0.05, 1.0)
         # Contact penalty — ngón mở chạm khối (đẩy khối đi)
@@ -85,7 +78,7 @@ def compute_terminal_reward(
     Returns
     -------
     float
-        +30 nếu tốt, -2 nếu bàn giao nhầm.
+        +30.0 nếu tốt, -2.0 nếu bàn giao nhầm.
     """
     if handoff_quality_good:
         return 30.0
